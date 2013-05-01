@@ -5,4 +5,4 @@ TODO for redis support in tourettes
     - Protip: use eredis client library
 3. Do the codez in torr_tracker.erl
 
-
+This can probably be generalised to any distributed database
