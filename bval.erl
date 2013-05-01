@@ -1,26 +1,37 @@
 -module(bval). 
--export([bencode/1,bencode_bin/1]).
--import(dict,[fold/3]).
+-import(lists,[foldl/3]).
+-export([bencode/1]).
+
+-compile(export_all).
+
+bencode(Dict) when element(1,Dict) == dict ->
+   BFun = fun(Key,Val,Acc) -> 
+         {BKey,BVal} = {bencode(Key),bencode(Val)},
+         <<Acc/binary,BKey/binary,BVal/binary>> end,
+   BinDict = dict:fold(BFun,<<>>,Dict),
+   <<$d,BinDict/binary,$e>>;
 
 bencode(List) when is_list(List) ->
-	[$l, [bencode(X) || X <- List], $e];
-
-bencode(Int) when is_integer(Int) ->
-	[$i,integer_to_list(Int),$e];
+   BList = foldl(
+      fun(Elem, Acc) -> 
+            BElem = bencode(Elem),
+            <<Acc/binary,BElem/binary>>
+      end, <<>>, List),
+   <<$l,BList/binary,$e>>;
 
 bencode(Str) when is_binary(Str) ->
-	[integer_to_list(size(Str)),$:,binary_to_list(Str)];
+   S = integer_to_binary(bit_size(Str) div 8),
+   <<S/binary,$:,Str/binary>>;
 
-bencode({Key,Val}) -> [bencode(Key),bencode(Val)];
+bencode(Int) when is_integer(Int) -> 
+   BInt = foldl(fun(E,Acc) -> <<Acc/binary,E>> end, 
+                <<>>, integer_to_list(Int)),
+   <<$i,BInt/binary,$e>>.
 
-% Somewhat inefficient
-bencode(Dict) when element(1,Dict) == dict ->
-	[$d,[[bencode(Key), bencode(Val)] || {Key, Val} <- dict:to_list(Dict)], $e].
-
-% This bencodes peers using the binary model representation
-bencode_bin(Dict) when element(1,Dict) == dict -> 
-   Bin = fold(fun(_Key,Val,Acc) -> bencode_bin_elem(Val,Acc) end, <<>>, Dict),
-   Size = dict:size(Dict) * 6,   
-   {integer_to_list(Size),Bin}.
-bencode_bin_elem({{_,IP},{_,Port}},Acc) -> <<Acc/binary,IP/binary,Port:16>>.
-
+% Converts an integer into a binary
+% O(log10 N)
+integer_to_binary(N) when N < 10 -> <<(N+48)>>;
+integer_to_binary(N) -> 
+   Num = N rem 10,
+   Rest = integer_to_binary(N div 10),
+   <<Rest/binary,(Num+48)>>.

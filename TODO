@@ -1,0 +1,8 @@
+TODO for redis support in tourettes
+
+1. Decide on data structures in the redis storage
+2. Write sensible redis frontend for torrent actions
+    - Protip: use eredis client library
+3. Do the codez in torr_tracker.erl
+
+

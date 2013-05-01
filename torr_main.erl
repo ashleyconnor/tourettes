@@ -6,23 +6,21 @@
 %%% Created : 05 Apr 2009
 %%%-------------------------------------------------------------------
 -module(torr_main).
-% -import(tracker_simple,[init/0]).
-% -import(torr_server,[init/1]).
--export([init/1,test/1]).
+-export([init/1]).
 
-init(Port) ->
-	PidServer = torr_server:init(Port),
-	PidTracker = torr_tracker:init().
-%	torr_tracker ! {add, "AARNE"}.
-	
+init(Port) -> spawn(fun() ->
+   process_flag(trap_exit,true),
+   torr_server:init(tcp,Port),
+   torr_server:init(udp,Port+1),
+   torr_tracker:init(),
+   super()
+end).
+   
 
-
-%	test(PidTracker).
-
-test(Pid) ->
-	Pid ! {add, "AARNE"},
-	Pid ! {request,{self(),"AARNE",1,2,3}},
-	receive
-		{peers,Peers} -> io:format("~w",[(Peers)]);
-		fail -> io:format("No AARNE :c")
-	end.
+super() ->
+   receive
+      {'EXIT',_,normal} -> super();
+      {'EXIT',Pid,Reason} ->
+         io:format("Process crash ~w:~w",[Pid,Reason]),
+         super()
+   end.
