@@ -1,43 +1,54 @@
 -module(torr_db_mnesia).
 -author("Tobias O").
+-compile(export_all).
 
-% -include_lib("/stdlib/include/qlc.hrl").
+% Needed for QLC to work
+-include_lib("stdlib/include/qlc.hrl").
 
-% Duplicate from torr_tracker. Gotta solve the dependencies some day
--record(client,{ip, port, down, up, left, seeding}).
--record(torrent,{info_hash,clients = dict:new() }).
+% Really a minimalistic approach to tracking
+-record(torrent,{info_hash,ip}).
 
-% TODO: Perhaps in mnesia it would be a better approach to just give each client
-% connected to a client a row in the table with the torrent as primary key and
-% ip as secondary key? Then retrieval and updating becomes WAY easier than with
-% the dictionary approach above.
+% TODO: Persistency and loading of tables?
 
 init() ->
-    % Start mnesia
     mnesia:start(),
-    % Create database on this node
     mnesia:create_schema([node()]),
-    % Create torrent table.
-    % Ram copies on all nodes, matching the torrent record
-    mnesia:creata_table(torrent,[{ram_copies, nodes()},
-                                 {attributes, record_info(fields, torrent)},
-                                 {type,set}]),
+    mnesia:create_table(torrent,[{attributes, record_info(fields, torrent)},
+                                 {type,bag}]),
+    % Do we really need this?
+    mnesia:add_table_index(torrent,ip),
     ok.
 
 hash_exists(Hash) ->
-    F = fun() -> mnesia:read(torrent,Hash) end,
-    Val = mnesia:transaction(F),
-    length(Val) > 0.
+    Rows = get_clients(Hash),
+    length(Rows) > 0.
 
-add_client(Hash,Client) -> ok.
+% Client is assumed to be a hashmap of attributes
+add_client(Hash,Client) ->
+    IP = dict:fetch(<<"ip">>,Client),
+    Record = #torrent{info_hash = Hash, ip = IP},
+    F = fun() -> mnesia:write(Record) end,
+    mnesia:transaction(F).
 
-get_clients(Hash) -> ok.
-
-remove_client(Hash,Client) -> ok.
-
-% Handy shortcut for single queries using QLC
-% Borrowed frow Programming Erlang by Joe Armstrong.
-do(Q) -> 
+get_clients(Hash) -> 
+    Q = qlc:q([T#torrent.ip || T <- mnesia:table(torrent), 
+                               T#torrent.info_hash =:= Hash]),
     F = fun() -> qlc:e(Q) end,
-    {atomic,Val} = mnesia:transaction(F),
-    Val.
+    {atomic,Clients} = mnesia:transaction(F),
+    Clients.
+
+get_torrents(Client) -> 
+    IP = dict:fetch(<<"ip">>,Client),
+    Q = qlc:q([C#torrent.info_hash || C <- mnesia:table(torrent),
+                                      C#torrent.ip =:= IP]),
+    F = fun() -> qlc:e(Q) end,
+    {atomic,Hashes} = mnesia:transaction(F),
+    Hashes.
+
+remove_client(Hash,Client) ->
+    IP = dict:fetch(<<"ip">>,Client),
+    Record = #torrent{info_hash = Hash, ip = IP},
+    F = fun() -> mnesia:delete_object(Record) end,
+    mnesia:transaction(F).
+
+
